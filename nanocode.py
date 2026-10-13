@@ -1,21 +1,5 @@
-class AgentStop(Exception):
-    """Agent stop."""
-
-
-class Agent:
-    def __init__(self) -> None:
-        pass
-
-    def handle_input(self, user_input: str) -> str:
-        input = user_input.strip()
-
-        if not input:
-            return ""
-
-        if input == "/q":
-            raise AgentStop
-
-        return input
+from agent import Agent, AgentStop
+from brain import ClaudeBrain
 
 
 # Read: input() waits for a line.
@@ -23,7 +7,8 @@ class Agent:
 # Print: print(output).
 # Loop: while True goes back to Read.
 def main():
-    agent = Agent()
+    brain = ClaudeBrain()
+    agent = Agent(brain)
     print("Nanocode v0.1")
     print("Type /q to quit.")
 
