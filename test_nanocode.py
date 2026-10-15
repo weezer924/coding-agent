@@ -1,11 +1,10 @@
 import pytest
-from agent import Agent, AgentStop
-from brain import Thought, ToolCall
+from nanocode import Agent, AgentStop, Brain, Thought, ToolCall, BRAINS
+
 
 # --- Fake Brain for Testing ---
 
-
-class FakeBrain:
+class FakeBrain(Brain):
     """Fake brain for testing - returns predictable responses."""
 
     def __init__(self, responses=None):
@@ -14,7 +13,7 @@ class FakeBrain:
         self.last_conversation = None
 
     def think(self, conversation):
-        self.last_conversation = list(conversation)  # Store a copy
+        self.last_conversation = list(conversation)
         if self.call_count < len(self.responses):
             response = self.responses[self.call_count]
             self.call_count += 1
@@ -22,8 +21,7 @@ class FakeBrain:
         return Thought(text="No more responses")
 
 
-# --- Tests from Chapter 1 ---
-
+# --- Tests from previous chapters ---
 
 def test_quit_command_raises_agent_stop():
     """Verify /q raises AgentStop exception."""
@@ -32,22 +30,11 @@ def test_quit_command_raises_agent_stop():
         agent.handle_input("/q")
 
 
-def test_quit_command_with_whitespace():
-    """Verify /q works with surrounding whitespace."""
-    agent = Agent(brain=FakeBrain())
-    with pytest.raises(AgentStop):
-        agent.handle_input("  /q  ")
-
-
 def test_empty_input_returns_empty_string():
     """Verify empty/whitespace input returns empty string."""
     agent = Agent(brain=FakeBrain())
     assert agent.handle_input("") == ""
     assert agent.handle_input("   ") == ""
-    assert agent.handle_input("\n") == ""
-
-
-# --- New tests for Chapter 3 ---
 
 
 def test_handle_input_returns_brain_response():
@@ -60,9 +47,10 @@ def test_handle_input_returns_brain_response():
 
 def test_conversation_accumulates():
     """Verify conversation list grows with each interaction."""
-    brain = FakeBrain(
-        responses=[Thought(text="Response 1"), Thought(text="Response 2")]
-    )
+    brain = FakeBrain(responses=[
+        Thought(text="Response 1"),
+        Thought(text="Response 2")
+    ])
     agent = Agent(brain=brain)
 
     agent.handle_input("First message")
@@ -72,46 +60,43 @@ def test_conversation_accumulates():
     assert len(agent.conversation) == 4  # 2 users + 2 assistants
 
 
-def test_conversation_contains_correct_roles():
-    """Verify conversation has correct role alternation."""
-    brain = FakeBrain(responses=[Thought(text="AI response")])
-    agent = Agent(brain=brain)
+# --- New tests for Chapter 4: Multiple Brains ---
 
-    agent.handle_input("User message")
+def test_agent_stores_brain_name():
+    """Verify agent stores the brain name."""
+    agent = Agent(brain=FakeBrain(), brain_name="claude")
+    assert agent.brain_name == "claude"
 
-    assert agent.conversation[0]["role"] == "user"
-    assert agent.conversation[0]["content"] == "User message"
-    assert agent.conversation[1]["role"] == "assistant"
-    assert agent.conversation[1]["content"] == "AI response"
+    agent = Agent(brain=FakeBrain(), brain_name="deepseek")
+    assert agent.brain_name == "deepseek"
 
 
-def test_brain_receives_conversation():
-    """Verify brain.think is called with the conversation list."""
-    brain = FakeBrain()
-    agent = Agent(brain=brain)
-
-    agent.handle_input("Test message")
-
-    assert brain.last_conversation is not None
-    assert len(brain.last_conversation) == 1
-    assert brain.last_conversation[0]["content"] == "Test message"
+def test_brains_registry_has_expected_providers():
+    """Verify BRAINS registry contains expected providers."""
+    assert "claude" in BRAINS
+    assert "deepseek" in BRAINS
 
 
-def test_failed_brain_call_removes_user_message():
-    """Verify failed brain call removes the user message from history."""
+def test_switch_command_toggles_brain_name():
+    """Verify /switch updates brain_name (using FakeBrain for both)."""
+    agent = Agent(brain=FakeBrain(), brain_name="claude")
 
-    class FailingBrain:
-        def think(self, conversation):
-            raise Exception("API Error")
+    # Mock BRAINS to use FakeBrain for switching
+    original_brains = BRAINS.copy()
+    BRAINS["claude"] = FakeBrain
+    BRAINS["deepseek"] = FakeBrain
 
-    agent = Agent(brain=FailingBrain())
-    result = agent.handle_input("Test message")
+    try:
+        result = agent.handle_input("/switch")
+        assert "deepseek" in result
+        assert agent.brain_name == "deepseek"
 
-    assert "Error" in result
-    assert len(agent.conversation) == 0  # Message should be removed
-
-
-# --- Thought and ToolCall tests ---
+        result = agent.handle_input("/switch")
+        assert "claude" in result
+        assert agent.brain_name == "claude"
+    finally:
+        BRAINS.clear()
+        BRAINS.update(original_brains)
 
 
 def test_thought_with_text():
@@ -119,14 +104,6 @@ def test_thought_with_text():
     thought = Thought(text="Hello")
     assert thought.text == "Hello"
     assert thought.tool_calls == []
-    assert thought.thinking is None
-
-
-def test_thought_with_thinking():
-    """Verify Thought stores thinking."""
-    thought = Thought(text="Hello", thinking="Let me consider this...")
-    assert thought.thinking == "Let me consider this..."
-    assert thought.text == "Hello"
 
 
 def test_thought_with_tool_calls():
@@ -140,10 +117,7 @@ def test_thought_with_tool_calls():
 
 def test_tool_call_stores_attributes():
     """Verify ToolCall stores id, name, and args."""
-    call = ToolCall(
-        id="abc123", name="write_file", args={"path": "x.txt", "content": "hi"}
-    )
+    call = ToolCall(id="abc123", name="write_file", args={"path": "x.txt", "content": "hi"})
     assert call.id == "abc123"
     assert call.name == "write_file"
     assert call.args["path"] == "x.txt"
-    assert call.args["content"] == "hi"

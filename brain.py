@@ -46,5 +46,9 @@ class ClaudeBrain:
             anthorpic_url, headers=self.headers, json=payload, timeout=120
         )
         resp.raise_for_status()
-        text = resp.json()["content"][0]["text"]
-        return Thought(text=text)
+        blocks = resp.json()["content"]
+        text = "".join(b["text"] for b in blocks if b["type"] == "text")
+        thinking = next(
+            (b["thinking"] for b in blocks if b["type"] == "thinking"), None
+        )
+        return Thought(text=text, thinking=thinking)

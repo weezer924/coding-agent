@@ -23,5 +23,7 @@ class Agent:
         except Exception as e:
             self.conversation.pop()
             return f"Error: {e}"
+
         self.conversation.append({"role": "assistant", "content": thought.text})
+
         return thought.text
