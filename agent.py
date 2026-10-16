@@ -1,10 +1,14 @@
+from brain import BRAINS
+
+
 class AgentStop(Exception):
     """Agent stop."""
 
 
 class Agent:
-    def __init__(self, brain) -> None:
+    def __init__(self, brain, brain_name: str = "claude") -> None:
         self.brain = brain
+        self.brain_name = brain_name
         self.conversation = []
 
     def handle_input(self, user_input: str) -> str:
@@ -15,6 +19,12 @@ class Agent:
 
         if input == "/q":
             raise AgentStop
+
+        if input == "/switch":
+            names = list(BRAINS)
+            self.brain_name = names[(names.index(self.brain_name) + 1) % len(names)]
+            self.brain = BRAINS[self.brain_name]()
+            return f"Switched to {self.brain_name}"
 
         self.conversation.append({"role": "user", "content": input})
 

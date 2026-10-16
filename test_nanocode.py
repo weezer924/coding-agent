@@ -1,8 +1,9 @@
 import pytest
-from nanocode import Agent, AgentStop, Brain, Thought, ToolCall, BRAINS
-
+from brain import BRAINS, Brain, Thought, ToolCall
+from nanocode import Agent, AgentStop
 
 # --- Fake Brain for Testing ---
+
 
 class FakeBrain(Brain):
     """Fake brain for testing - returns predictable responses."""
@@ -22,6 +23,7 @@ class FakeBrain(Brain):
 
 
 # --- Tests from previous chapters ---
+
 
 def test_quit_command_raises_agent_stop():
     """Verify /q raises AgentStop exception."""
@@ -47,10 +49,9 @@ def test_handle_input_returns_brain_response():
 
 def test_conversation_accumulates():
     """Verify conversation list grows with each interaction."""
-    brain = FakeBrain(responses=[
-        Thought(text="Response 1"),
-        Thought(text="Response 2")
-    ])
+    brain = FakeBrain(
+        responses=[Thought(text="Response 1"), Thought(text="Response 2")]
+    )
     agent = Agent(brain=brain)
 
     agent.handle_input("First message")
@@ -62,19 +63,20 @@ def test_conversation_accumulates():
 
 # --- New tests for Chapter 4: Multiple Brains ---
 
+
 def test_agent_stores_brain_name():
     """Verify agent stores the brain name."""
     agent = Agent(brain=FakeBrain(), brain_name="claude")
     assert agent.brain_name == "claude"
 
-    agent = Agent(brain=FakeBrain(), brain_name="deepseek")
-    assert agent.brain_name == "deepseek"
+    agent = Agent(brain=FakeBrain(), brain_name="sarashina")
+    assert agent.brain_name == "sarashina"
 
 
 def test_brains_registry_has_expected_providers():
     """Verify BRAINS registry contains expected providers."""
     assert "claude" in BRAINS
-    assert "deepseek" in BRAINS
+    assert "sarashina" in BRAINS
 
 
 def test_switch_command_toggles_brain_name():
@@ -84,12 +86,12 @@ def test_switch_command_toggles_brain_name():
     # Mock BRAINS to use FakeBrain for switching
     original_brains = BRAINS.copy()
     BRAINS["claude"] = FakeBrain
-    BRAINS["deepseek"] = FakeBrain
+    BRAINS["sarashina"] = FakeBrain
 
     try:
         result = agent.handle_input("/switch")
-        assert "deepseek" in result
-        assert agent.brain_name == "deepseek"
+        assert "sarashina" in result
+        assert agent.brain_name == "sarashina"
 
         result = agent.handle_input("/switch")
         assert "claude" in result
@@ -117,7 +119,9 @@ def test_thought_with_tool_calls():
 
 def test_tool_call_stores_attributes():
     """Verify ToolCall stores id, name, and args."""
-    call = ToolCall(id="abc123", name="write_file", args={"path": "x.txt", "content": "hi"})
+    call = ToolCall(
+        id="abc123", name="write_file", args={"path": "x.txt", "content": "hi"}
+    )
     assert call.id == "abc123"
     assert call.name == "write_file"
     assert call.args["path"] == "x.txt"
