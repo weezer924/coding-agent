@@ -1,3 +1,4 @@
+import json
 import os
 from dataclasses import dataclass
 
@@ -46,19 +47,6 @@ class Brain:
         """Process conversation, return Thought."""
         raise NotImplementedError
 
-
-class ClaudeBrain(Brain):
-    def __init__(self, model="claude-sonnet-5-5", tools=None):
-        load_dotenv()
-        self.api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.model = model
-        self.headers = {
-            "x-api-key": anthorpic_api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
-        self.tools = tools or []
-
     def _parse_response(self, content):
         """Convert API response format to Thought."""
         text_parts = []
@@ -82,6 +70,19 @@ class ClaudeBrain(Brain):
             raw_content=content,
         )
 
+
+class ClaudeBrain(Brain):
+    def __init__(self, model="claude-sonnet-5-5", tools=None):
+        load_dotenv()
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.model = model
+        self.headers = {
+            "x-api-key": anthorpic_api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        self.tools = tools or []
+
     def think(self, conversation) -> Thought:
         payload = {
             "model": self.model,
@@ -96,7 +97,6 @@ class ClaudeBrain(Brain):
             anthorpic_url, headers=self.headers, json=payload, timeout=120
         )
 
-        resp.raise_for_status()
         return self._parse_response(resp.json()["content"])
 
 
@@ -111,6 +111,36 @@ class SarashinaBrain(Brain):
         }
         self.tools = tools or []
 
+    def _tool_definitions(self):
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.input_schema,
+                },
+            }
+            for t in self.tools
+        ]
+
+    def _to_blocks(self, message):
+        blocks = []
+
+        if message.get("content"):
+            blocks.append({"type": "text", "text": message["content"]})
+
+        for call in message.get("tool_calls") or []:
+            blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": call["id"],
+                    "name": call["function"]["name"],
+                    "input": json.loads(call["function"]["arguments"]),
+                }
+            )
+        return blocks
+
     def think(self, conversation) -> Thought:
         payload = {
             "model": self.model,
@@ -118,18 +148,18 @@ class SarashinaBrain(Brain):
         }
 
         if self.tools:
-            payload["tools"] = tool_definitions(self.tools)
+            payload["tools"] = self._tool_definitions()
+            payload["tool_choice"] = "auto"
 
         resp = requests.post(
             sarashina_url, headers=self.headers, json=payload, timeout=120
         )
-        resp.raise_for_status()
 
         if resp.status_code != 200:
             raise RuntimeError(f"{resp.status_code}: {resp.text[:300]}")
 
-        text = resp.json()["choices"][0]["message"]["content"]
-        return Thought(text=text)
+        message = resp.json()["choices"][0]["message"]
+        return self._parse_response(self._to_blocks(message))
 
 
 BRAINS = {
