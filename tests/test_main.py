@@ -36,9 +36,6 @@ class FakeBrain:
         )
 
 
-# --- Tests from previous chapters ---
-
-
 def test_quit_command_raises_agent_stop():
     """Verify /q raises AgentStop exception."""
     agent = Agent(brain=FakeBrain(), tools=tools)
@@ -63,6 +60,21 @@ def test_handle_input_returns_brain_response():
     agent = Agent(brain=brain, tools=tools)
     result = agent.handle_input("hi")
     assert result == "Hello!"
+
+
+def test_converstaion_accumulates():
+    """Verify conversation list grows with each interaction."""
+    brain = FakeBrain(
+        responses=[Thought(text="Response 1"), Thought(text="Response 2")]
+    )
+
+    agent = Agent(brain=brain)
+
+    agent.handle_input("First message")
+    assert len(agent.conversation) == 2  # user + assistant
+
+    agent.handle_input("Second message")
+    assert len(agent.conversation) == 4  # user + assistant
 
 
 # --- Tool class tests ---

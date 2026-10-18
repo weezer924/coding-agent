@@ -9,12 +9,20 @@ from tools import tool_definitions
 
 @dataclass
 class ToolCall:
+    """A tool invocation request from the brain."""
+
     id: str
     name: str
     args: dict
 
 
+# text：给人看的文字。可能为空，模型有时只要工具不说话。
+# tool_calls：模型要调的工具列表，每项是一个 ToolCall（id、name、args）。空列表就是「答完了」。
+# thinking：模型的思考块，有就存，Agent 现在不用。
+# raw_content：API 返回的原始 block 列表，原样存进历史用。
 class Thought:
+    """Standardized response from any Brain. returns 文本、工具调用 or nothing"""
+
     def __init__(self, text=None, tool_calls=None, thinking=None, raw_content=None):
         self.text = text
         self.tool_calls = tool_calls or []
@@ -38,6 +46,19 @@ class Brain:
         """Process conversation, return Thought."""
         raise NotImplementedError
 
+
+class ClaudeBrain(Brain):
+    def __init__(self, model="claude-sonnet-5-5", tools=None):
+        load_dotenv()
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.model = model
+        self.headers = {
+            "x-api-key": anthorpic_api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        self.tools = tools or []
+
     def _parse_response(self, content):
         """Convert API response format to Thought."""
         text_parts = []
@@ -58,42 +79,29 @@ class Brain:
             text="\n".join(text_parts) if text_parts else None,
             tool_calls=tool_calls,
             thinking=thinking,
+            raw_content=content,
         )
 
-
-class ClaudeBrain(Brain):
-    def __init__(self, model="claude-sonnet-5-5", tools=None):
-        load_dotenv()
-        self.api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.model = model
-        self.headers = {
-            "x-api-key": anthorpic_api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
-        self.tools = tools
-
-    def think(self, conversation, tools) -> Thought:
+    def think(self, conversation) -> Thought:
         payload = {
             "model": self.model,
             "max_tokens": 4096,
             "messages": conversation,
-            "tools": tool_definitions(self.tools),
         }
+
+        if self.tools:
+            payload["tools"] = tool_definitions(self.tools)
+
         resp = requests.post(
             anthorpic_url, headers=self.headers, json=payload, timeout=120
         )
+
         resp.raise_for_status()
-        blocks = resp.json()["content"]
-        text = "".join(b["text"] for b in blocks if b["type"] == "text")
-        thinking = next(
-            (b["thinking"] for b in blocks if b["type"] == "thinking"), None
-        )
-        return Thought(text=text, thinking=thinking, tool_calls=tools)
+        return self._parse_response(resp.json()["content"])
 
 
 class SarashinaBrain(Brain):
-    def __init__(self, model="sarashina3-mini"):
+    def __init__(self, model="sarashina3-mini", tools=None):
         load_dotenv()
         self.api_key = os.getenv("SARASHINA_API_KEY")
         self.model = model
@@ -101,12 +109,17 @@ class SarashinaBrain(Brain):
             "Authorization": f"Bearer {self.api_key}",
             "content-type": "application/json",
         }
+        self.tools = tools or []
 
     def think(self, conversation) -> Thought:
         payload = {
             "model": self.model,
             "messages": conversation,
         }
+
+        if self.tools:
+            payload["tools"] = tool_definitions(self.tools)
+
         resp = requests.post(
             sarashina_url, headers=self.headers, json=payload, timeout=120
         )

@@ -1,5 +1,6 @@
 from agent import Agent, AgentStop
 from brain import ClaudeBrain
+from tools import tools
 
 
 # Read: input() waits for a line.
@@ -7,9 +8,9 @@ from brain import ClaudeBrain
 # Print: print(output).
 # Loop: while True goes back to Read.
 def main():
-    brain = ClaudeBrain()
-    agent = Agent(brain)
-    print("Nanocode v0.1")
+    brain = ClaudeBrain(tools=tools)
+    agent = Agent(brain, tools=tools)
+    print("Nanocode v0.3(Tool using)")
     print("Type /q to quit.")
 
     while True:
@@ -18,7 +19,7 @@ def main():
             output = agent.handle_input(user_input)
 
             if output:
-                print(output)
+                print(f"\n{output}\n")
 
         except (AgentStop, KeyboardInterrupt):
             print("\nExiting...")
