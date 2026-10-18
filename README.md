@@ -23,7 +23,7 @@ cp ../reference/.env.example .env   # then put ANTHROPIC_API_KEY (and SARASHINA_
 ## Run
 
 ```bash
-.venv/bin/python nanocode.py
+.venv/bin/python main.py
 ```
 
 Commands inside the Read-Eval-Print Loop: `/q` quits, `/switch` toggles between the brains in
@@ -35,8 +35,8 @@ Commands inside the Read-Eval-Print Loop: `/q` quits, `/switch` toggles between 
 .venv/bin/pytest -q
 ```
 
-`test_nanocode.py` use a `FakeBrain`, so no API key is needed. 
-`test_anthropic_api.py` and `test_sarashina_api.py` are manual probes that hit the real APIs; 
+`tests/test_main.py` It uses a `FakeBrain`, so no API key is needed. 
+`scripts/probe_anthropic.py` and `scripts/probe_sarashina.py` are manual probes that hit the real APIs; 
 
 
 ## Develop log
@@ -49,3 +49,9 @@ Commands inside the Read-Eval-Print Loop: `/q` quits, `/switch` toggles between 
 | 04 | done | `Brain` base class, `BRAINS` registry, `/switch` | History is provider-neutral; only the brain converts. Roles are `user` / `assistant`, nothing else. |
 | 05 | in progress | `ReadFile`, `WriteFile`, tool schemas, the agentic loop | Tool use is a protocol: send schemas, get back a structured call, run it, return a `tool_result` block. Assistant turns must be stored as raw blocks so ids line up. Tools return strings, never raise. Cap the loop. |
 | 06–09 | next | memory file, plan mode, codebase search, run commands and feed errors back | |
+## License
+
+MIT. The test files reference under
+[optimalone/build-your-own-coding-agent](https://github.com/optimalone/build-your-own-coding-agent),
+Copyright (c) 2025 Owen Ou, MIT License. The full text is in [LICENSE](LICENSE)
+and applies to this repository as well.
