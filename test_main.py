@@ -2,6 +2,7 @@ import os
 import tempfile
 
 import pytest
+
 from agent import Agent, AgentStop
 from brain import Thought, ToolCall
 from tools import ReadFile, WriteFile, get_tool, tool_definitions, tools
