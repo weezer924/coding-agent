@@ -4,6 +4,8 @@ from dataclasses import dataclass
 import requests
 from dotenv import load_dotenv
 
+from tools import tool_definitions
+
 
 @dataclass
 class ToolCall:
@@ -13,10 +15,11 @@ class ToolCall:
 
 
 class Thought:
-    def __init__(self, text=None, tool_calls=None, thinking=None):
+    def __init__(self, text=None, tool_calls=None, thinking=None, raw_content=None):
         self.text = text
         self.tool_calls = tool_calls or []
         self.thinking = thinking
+        self.raw_content = raw_content or []
 
 
 # 1. Load the vault
@@ -59,7 +62,7 @@ class Brain:
 
 
 class ClaudeBrain(Brain):
-    def __init__(self, model="claude-sonnet-5-5"):
+    def __init__(self, model="claude-sonnet-5-5", tools=None):
         load_dotenv()
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.model = model
@@ -68,9 +71,15 @@ class ClaudeBrain(Brain):
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
+        self.tools = tools
 
-    def think(self, conversation) -> Thought:
-        payload = {"model": self.model, "max_tokens": 4096, "messages": conversation}
+    def think(self, conversation, tools) -> Thought:
+        payload = {
+            "model": self.model,
+            "max_tokens": 4096,
+            "messages": conversation,
+            "tools": tool_definitions(self.tools),
+        }
         resp = requests.post(
             anthorpic_url, headers=self.headers, json=payload, timeout=120
         )
@@ -80,7 +89,7 @@ class ClaudeBrain(Brain):
         thinking = next(
             (b["thinking"] for b in blocks if b["type"] == "thinking"), None
         )
-        return Thought(text=text, thinking=thinking)
+        return Thought(text=text, thinking=thinking, tool_calls=tools)
 
 
 class SarashinaBrain(Brain):
@@ -102,6 +111,10 @@ class SarashinaBrain(Brain):
             sarashina_url, headers=self.headers, json=payload, timeout=120
         )
         resp.raise_for_status()
+
+        if resp.status_code != 200:
+            raise RuntimeError(f"{resp.status_code}: {resp.text[:300]}")
+
         text = resp.json()["choices"][0]["message"]["content"]
         return Thought(text=text)
 
