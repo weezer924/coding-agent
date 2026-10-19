@@ -43,6 +43,7 @@ Commands inside the Read-Eval-Print Loop: `/q` quits, `/switch` toggles between 
 Prompts: "read tools.py and write a new file hello.text with "hello from sarashina"
 
 Result:
+```sh
 > read tools.py and write a new file hello.text with "hello from sarashina"
 8 ['read_file']
   → Writing hello.text
@@ -50,12 +51,10 @@ Result:
 
 The file **`hello.text`** has been created with the content:
 
-```
-hello from sarashina
-```
+"hello from sarashina"
 
 Let me know if you’d like to read it back, modify it, or work with any other files!
-
+```
 
 ## Develop log
 
