@@ -16,8 +16,8 @@ Here is the introduce for each files:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r ../reference/requirements.txt
-cp ../reference/.env.example .env   # then put ANTHROPIC_API_KEY (and SARASHINA_API_KEY) in .env
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env   # then put ANTHROPIC_API_KEY (and SARASHINA_API_KEY) in .env
 ```
 
 ## Run
@@ -58,7 +58,7 @@ Let me know if you’d like to read it back, modify it, or work with any other f
 
 ## Develop log
 
-| Develop Ch | State | What it added | What I Did |
+| Develop Step | State | What it added | What I Did |
 |---|---|---|---|
 | 01 | done | REPL: read, eval, print, loop | The outer loop never changes; every later chapter only changes `handle_input`. |
 | 02 | done | One raw `requests.post` to Claude, one to Sarashina | `content` is a list of typed blocks. `stop_reason` drives the loop later. Two providers, two JSON shapes. |
