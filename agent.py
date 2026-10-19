@@ -64,7 +64,6 @@ class Agent:
                 results.append(
                     {"type": "tool_result", "tool_use_id": call.id, "content": result}
                 )
-                print(len(self.conversation), [c.name for c in thought.tool_calls])
             self.conversation.append({"role": "user", "content": results})
 
         return "\n".join(output)

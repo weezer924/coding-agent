@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import requests
 from dotenv import load_dotenv
-
 from tools import tool_definitions
 
 
@@ -141,10 +140,52 @@ class SarashinaBrain(Brain):
             )
         return blocks
 
+    def _to_messages(self, conversation):
+        out = []
+
+        for message in conversation:
+            role = message["role"]
+            content = message["content"]
+
+            if isinstance(content, str):
+                out.append(message)
+            elif role == "assistant":
+                texts = []
+                calls = []
+
+                for block in content:
+                    if block["type"] == "text":
+                        texts.append(block["text"])
+                    elif block["type"] == "tool_use":
+                        calls.append(
+                            {
+                                "id": block["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": block["name"],
+                                    "arguments": json.dumps(block["input"]),
+                                },
+                            }
+                        )
+                new_msg = {"role": "assistant", "content": "\n".join(texts)}
+                if calls:
+                    new_msg["tool_calls"] = calls
+                out.append(new_msg)
+            else:
+                for block in content:
+                    out.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": block["tool_use_id"],
+                            "content": block["content"],
+                        }
+                    )
+        return out
+
     def think(self, conversation) -> Thought:
         payload = {
             "model": self.model,
-            "messages": conversation,
+            "messages": self._to_messages(conversation),
         }
 
         if self.tools:
