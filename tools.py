@@ -43,7 +43,32 @@ class WriteFile:
             return f"Error writing file: {e}"
 
 
-tools = [ReadFile(), WriteFile()]
+class SaveMemory:
+    name = "save_memory"
+    description = "Writes content to a memory. OVERWRITES existing content."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Path to the file"},
+            "content": {
+                "type": "string",
+                "description": "The full content to write",
+            },
+        },
+        "required": ["path", "content"],
+    }
+
+    def execute(self, path, content):
+        print(f"  → Writing {path}")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return f"Successfully wrote {len(content)} characters to {path}"
+        except Exception as e:
+            return f"Error writing file: {e}"
+
+
+tools = [ReadFile(), WriteFile(), SaveMemory()]
 
 
 def get_tool(tools, name):

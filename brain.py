@@ -14,6 +14,9 @@ class ToolCall:
     id: str
     name: str
     args: dict
+    # Set only when the provider's arguments string was not valid JSON;
+    # args is {} in that case and the raw string is kept for inspection.
+    raw_args: str | None = None
 
 
 # text：给人看的文字。可能为空，模型有时只要工具不说话。
@@ -39,6 +42,14 @@ anthorpic_url = "https://api.anthropic.com/v1/messages"
 sarashina_url = "https://api.sarashina.ai/v1/chat/completions"
 
 
+class RateLimited(RuntimeError):
+    """HTTP 429; retry_after is the server's Retry-After in seconds (or None)."""
+
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class Brain:
     """Base class for LLM providers"""
 
@@ -59,7 +70,12 @@ class Brain:
                 text_parts.append(block["text"])
             elif block["type"] == "tool_use":
                 tool_calls.append(
-                    ToolCall(id=block["id"], name=block["name"], args=block["input"])
+                    ToolCall(
+                        id=block["id"],
+                        name=block["name"],
+                        args=block["input"],
+                        raw_args=block.get("raw_arguments"),
+                    )
                 )
 
         return Thought(
@@ -71,7 +87,7 @@ class Brain:
 
 
 class ClaudeBrain(Brain):
-    def __init__(self, model="claude-sonnet-5-5", tools=None):
+    def __init__(self, model="claude-sonnet-5-5", tools=None):  # 推論モデル
         load_dotenv()
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.model = model
@@ -81,6 +97,7 @@ class ClaudeBrain(Brain):
             "content-type": "application/json",
         }
         self.tools = tools or []
+        self.last_usage = None
 
     def think(self, conversation) -> Thought:
         payload = {
@@ -96,14 +113,28 @@ class ClaudeBrain(Brain):
             anthorpic_url, headers=self.headers, json=payload, timeout=120
         )
 
-        return self._parse_response(resp.json()["content"])
+        if resp.status_code != 200:
+            raise RuntimeError(f"{resp.status_code}: {resp.text[:300]}")
+
+        body = resp.json()
+        self.last_usage = body.get("usage")
+        return self._parse_response(body["content"])
 
 
 class SarashinaBrain(Brain):
-    def __init__(self, model="sarashina3-mini", tools=None):
+    def __init__(
+        self,
+        model="sarashina3-mini",
+        tools=None,
+        temperature=None,
+        max_completion_tokens=4096,
+    ):
         load_dotenv()
         self.api_key = os.getenv("SARASHINA_API_KEY")
         self.model = model
+        self.temperature = temperature
+        self.max_completion_tokens = max_completion_tokens
+        self.last_usage = None
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "content-type": "application/json",
@@ -130,14 +161,21 @@ class SarashinaBrain(Brain):
             blocks.append({"type": "text", "text": message["content"]})
 
         for call in message.get("tool_calls") or []:
-            blocks.append(
-                {
-                    "type": "tool_use",
-                    "id": call["id"],
-                    "name": call["function"]["name"],
-                    "input": json.loads(call["function"]["arguments"]),
-                }
-            )
+            raw = call["function"]["arguments"]
+            block = {
+                "type": "tool_use",
+                "id": call["id"],
+                "name": call["function"]["name"],
+            }
+            try:
+                block["input"] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError) as e:
+                # Keep the turn alive: the tool gets {} and reports the bad
+                # arguments back to the model instead of the loop crashing.
+                block["input"] = {}
+                block["raw_arguments"] = raw
+                block["parse_error"] = str(e)
+            blocks.append(block)
         return blocks
 
     def _to_messages(self, conversation):
@@ -186,7 +224,10 @@ class SarashinaBrain(Brain):
         payload = {
             "model": self.model,
             "messages": self._to_messages(conversation),
+            "max_completion_tokens": self.max_completion_tokens,
         }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
 
         if self.tools:
             payload["tools"] = self._tool_definitions()
@@ -196,10 +237,15 @@ class SarashinaBrain(Brain):
             sarashina_url, headers=self.headers, json=payload, timeout=120
         )
 
+        if resp.status_code == 429:
+            ra = resp.headers.get("Retry-After")
+            raise RateLimited(f"429: {resp.text[:300]}", float(ra) if ra else None)
         if resp.status_code != 200:
             raise RuntimeError(f"{resp.status_code}: {resp.text[:300]}")
 
-        message = resp.json()["choices"][0]["message"]
+        body = resp.json()
+        self.last_usage = body.get("usage")
+        message = body["choices"][0]["message"]
         return self._parse_response(self._to_blocks(message))
 
 

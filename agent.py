@@ -21,7 +21,11 @@ class Agent:
         if tool is None:
             return "not found tool"
 
-        return tool.execute(**args)
+        try:
+            return tool.execute(**args)
+        except TypeError as e:
+            # Missing/extra keys from the model must not kill the loop.
+            return f"Error: invalid arguments for {tool_name}: {e}"
 
     def handle_input(self, user_input: str) -> str:
         text = user_input.strip()
@@ -60,7 +64,10 @@ class Agent:
 
             results = []
             for call in thought.tool_calls:
-                result = self._execute_tool(call.name, call.args)
+                if call.raw_args is not None:
+                    result = f"Error: arguments were not valid JSON: {call.raw_args[:200]}"
+                else:
+                    result = self._execute_tool(call.name, call.args)
                 results.append(
                     {"type": "tool_result", "tool_use_id": call.id, "content": result}
                 )

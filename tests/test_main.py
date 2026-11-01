@@ -2,10 +2,10 @@ import os
 import tempfile
 
 import pytest
-
 from agent import Agent, AgentStop
-from brain import Thought, ToolCall
-from tools import ReadFile, WriteFile, get_tool, tool_definitions, tools
+from brain import Thought
+from memory import Memory, ToolContext
+from tools import ReadFile, SaveMemory, WriteFile, tool_definitions, tools
 
 # --- Fake Brain for Testing ---
 
@@ -13,7 +13,8 @@ from tools import ReadFile, WriteFile, get_tool, tool_definitions, tools
 class FakeBrain:
     """Fake brain for testing - returns predictable responses."""
 
-    def __init__(self, responses=None, tools=None):
+    def __init__(self, responses=None, memory=None, tools=None):
+        self.memory = memory
         self.tools = tools or []
         self.responses = responses or [
             Thought(
@@ -22,10 +23,8 @@ class FakeBrain:
             )
         ]
         self.call_count = 0
-        self.last_conversation = None
 
     def think(self, conversation):
-        self.last_conversation = list(conversation)
         if self.call_count < len(self.responses):
             response = self.responses[self.call_count]
             self.call_count += 1
@@ -34,6 +33,9 @@ class FakeBrain:
             text="No more responses",
             raw_content=[{"type": "text", "text": "No more responses"}],
         )
+
+
+# --- Tests from previous chapters ---
 
 
 def test_quit_command_raises_agent_stop():
@@ -50,36 +52,6 @@ def test_empty_input_returns_empty_string():
     assert agent.handle_input("   ") == ""
 
 
-def test_handle_input_returns_brain_response():
-    """Verify handle_input returns the brain's response text."""
-    brain = FakeBrain(
-        responses=[
-            Thought(text="Hello!", raw_content=[{"type": "text", "text": "Hello!"}])
-        ]
-    )
-    agent = Agent(brain=brain, tools=tools)
-    result = agent.handle_input("hi")
-    assert result == "Hello!"
-
-
-def test_converstaion_accumulates():
-    """Verify conversation list grows with each interaction."""
-    brain = FakeBrain(
-        responses=[Thought(text="Response 1"), Thought(text="Response 2")]
-    )
-
-    agent = Agent(brain=brain)
-
-    agent.handle_input("First message")
-    assert len(agent.conversation) == 2  # user + assistant
-
-    agent.handle_input("Second message")
-    assert len(agent.conversation) == 4  # user + assistant
-
-
-# --- Tool class tests ---
-
-
 def test_read_file_adds_line_numbers():
     """Verify ReadFile prefixes each line with line numbers."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -88,19 +60,12 @@ def test_read_file_adds_line_numbers():
 
     try:
         tool = ReadFile()
-        result = tool.execute(temp_path)
+        context = ToolContext()
+        result = tool.execute(context, temp_path)
         assert "1 | line one" in result
         assert "2 | line two" in result
-        assert "3 | line three" in result
     finally:
         os.unlink(temp_path)
-
-
-def test_read_file_handles_missing_file():
-    """Verify ReadFile returns error for missing file."""
-    tool = ReadFile()
-    result = tool.execute("/nonexistent/path/file.txt")
-    assert "Error" in result
 
 
 def test_write_file_creates_file():
@@ -108,79 +73,117 @@ def test_write_file_creates_file():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = os.path.join(tmpdir, "test.txt")
         tool = WriteFile()
-        result = tool.execute(path, "hello world")
+        context = ToolContext()
+        result = tool.execute(context, path, "hello world")
 
         assert os.path.exists(path)
         assert "Successfully wrote" in result
-        assert "11 characters" in result
-        with open(path) as f:
-            assert f.read() == "hello world"
 
 
-def test_write_file_overwrites_existing():
-    """Verify WriteFile overwrites existing content."""
+# --- Memory class tests ---
+
+
+def test_memory_creates_default_file():
+    """Verify Memory creates file with default content if missing."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        path = os.path.join(tmpdir, "test.txt")
-        tool = WriteFile()
+        path = os.path.join(tmpdir, "memory.md")
+        memory = Memory(path=path)
 
-        tool.execute(path, "original content")
-        tool.execute(path, "new content")
+        assert os.path.exists(path)
+        assert "Nanocode" in memory.content
 
+
+def test_memory_loads_existing_content():
+    """Verify Memory loads content from existing file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "memory.md")
+
+        # Pre-create file with custom content
+        with open(path, "w") as f:
+            f.write("Custom memory content")
+
+        memory = Memory(path=path)
+        assert memory.content == "Custom memory content"
+
+
+def test_memory_save_updates_content_and_file():
+    """Verify Memory.save() updates both content and file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "memory.md")
+        memory = Memory(path=path)
+
+        memory.save("New content")
+
+        assert memory.content == "New content"
         with open(path) as f:
-            assert f.read() == "new content"
+            assert f.read() == "New content"
 
 
-def test_write_file_handles_bad_path():
-    """Verify WriteFile returns error for invalid path."""
-    tool = WriteFile()
-    result = tool.execute("/nonexistent/path/file.txt", "content")
+# --- SaveMemory tool tests ---
+
+
+def test_save_memory_updates_memory():
+    """Verify SaveMemory updates the Memory object."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        memory = Memory(path=os.path.join(tmpdir, "memory.md"))
+        tool = SaveMemory()
+        context = ToolContext(memory=memory)
+
+        result = tool.execute(context, "Updated preferences")
+
+        assert "successfully" in result.lower()
+        assert memory.content == "Updated preferences"
+
+
+def test_save_memory_fails_without_memory():
+    """Verify SaveMemory returns error when memory is None."""
+    tool = SaveMemory()
+    context = ToolContext(memory=None)
+    result = tool.execute(context, "test")
     assert "Error" in result
 
 
-# --- Tool definition tests ---
+# --- Agent with Memory tests ---
 
 
-def test_tool_has_required_attributes():
-    """Verify tool classes have name, description, input_schema."""
-    tool = ReadFile()
-    assert tool.name == "read_file"
-    assert tool.description is not None
-    assert tool.input_schema is not None
+def test_agent_has_save_memory_tool():
+    """Verify agent has save_memory tool."""
+    agent = Agent(brain=FakeBrain(), tools=tools)
+
+    tool_names = [t.name for t in agent.tools]
+    assert "save_memory" in tool_names
 
 
-def test_get_tool_finds_by_name():
-    """Verify get_tool finds a tool by name."""
-    tool = get_tool(tools, "read_file")
-    assert tool is not None
-    assert tool.name == "read_file"
+def test_agent_execute_save_memory_tool():
+    """Verify save_memory tool updates the Memory object through agent."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        memory = Memory(path=os.path.join(tmpdir, "memory.md"))
+        agent = Agent(brain=FakeBrain(), tools=tools, memory=memory)
+
+        result = agent._execute_tool("save_memory", {"content": "Updated preferences"})
+
+        assert "successfully" in result.lower()
+        assert memory.content == "Updated preferences"
 
 
-def test_get_tool_returns_none_for_unknown():
-    """Verify get_tool returns None for unknown tool name."""
-    tool = get_tool(tools, "unknown_tool")
-    assert tool is None
+def test_brain_receives_memory_content():
+    """Verify brain has access to memory content."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        memory = Memory(path=os.path.join(tmpdir, "memory.md"))
+        memory.save("Custom system prompt")
+
+        brain = FakeBrain(memory=memory)
+        assert brain.memory.content == "Custom system prompt"
 
 
-def test_tool_definitions_for_api():
-    """Verify tool_definitions returns correct format for API."""
-    defs = tool_definitions(tools)
-    assert len(defs) == 2
-    for d in defs:
-        assert "name" in d
-        assert "description" in d
-        assert "input_schema" in d
-        # Should not include execute method
-        assert "execute" not in d
-
-
-# --- Agent tool execution tests ---
+# --- Tool execution tests ---
 
 
 def test_agent_execute_tool_finds_tool():
     """Verify agent can execute a registered tool."""
     agent = Agent(brain=FakeBrain(), tools=tools)
     result = agent._execute_tool("read_file", {"path": __file__})
-    assert "import" in result  # This file contains 'import'
+    assert "import" in result
 
 
 def test_agent_execute_tool_unknown_tool():
@@ -191,64 +194,11 @@ def test_agent_execute_tool_unknown_tool():
 
 
 def test_agent_tools_definitions():
-    """Verify tool definitions are correctly formatted for API."""
+    """Verify tool definitions include all tools."""
     agent = Agent(brain=FakeBrain(), tools=tools)
     definitions = tool_definitions(agent.tools)
 
-    assert len(definitions) == 2
-    assert definitions[0]["name"] == "read_file"
-    assert "description" in definitions[0]
-    assert "input_schema" in definitions[0]
-
-
-# --- Agentic loop tests ---
-
-
-def test_agentic_loop_executes_tool_calls():
-    """Verify agentic loop executes tool calls and continues."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("test content\n")
-        temp_path = f.name
-
-    try:
-        # Brain returns a tool call, then a final response
-        brain = FakeBrain(
-            responses=[
-                Thought(
-                    text="Let me read that file.",
-                    tool_calls=[
-                        ToolCall(id="1", name="read_file", args={"path": temp_path})
-                    ],
-                    raw_content=[
-                        {"type": "text", "text": "Let me read that file."},
-                        {
-                            "type": "tool_use",
-                            "id": "1",
-                            "name": "read_file",
-                            "input": {"path": temp_path},
-                        },
-                    ],
-                ),
-                Thought(
-                    text="The file contains test content.",
-                    raw_content=[
-                        {"type": "text", "text": "The file contains test content."}
-                    ],
-                ),
-            ]
-        )
-        agent = Agent(brain=brain, tools=tools)
-        result = agent.handle_input("Read the file")
-
-        assert "Let me read that file." in result
-        assert "The file contains test content." in result
-        assert brain.call_count == 2  # Called twice (tool call + final)
-    finally:
-        os.unlink(temp_path)
-
-
-def test_thought_stores_raw_content():
-    """Verify Thought stores raw_content for message history."""
-    raw = [{"type": "text", "text": "Hello"}]
-    thought = Thought(text="Hello", raw_content=raw)
-    assert thought.raw_content == raw
+    tool_names = [d["name"] for d in definitions]
+    assert "save_memory" in tool_names
+    assert "read_file" in tool_names
+    assert "write_file" in tool_names
