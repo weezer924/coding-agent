@@ -79,3 +79,36 @@ MIT. The test files reference under
 [optimalone/build-your-own-coding-agent](https://github.com/optimalone/build-your-own-coding-agent),
 Copyright (c) 2025 Owen Ou, MIT License. The full text is in [LICENSE](LICENSE)
 and applies to this repository as well.
+
+
+## About memory
+
+# 启动
+# main.py：Memory(".nanocode/memory.md")。memory.py 检查文件，不存在就写默认文字，memory.content 里有默认内容。
+# main.py：建 Brain 和 Agent，把同一个 memory 对象传给两边。agent.py 里 self.context = ToolContext(memory=memory)。
+
+# 你输入「记忆一下，我喜欢苹果」
+# 3. main.py：input() 收到这句，调 agent.handle_input(...)。
+# 4. agent.py：不是 /q 也不是 /switch，append 一条 role: user 进 self.conversation，进入循环。
+
+# 第 1 圈
+# 5. agent.py：调 self.brain.think(self.conversation)。
+# 6. brain.py：拼 payload，messages 是历史，tools 是三个工具的定义，system 是 self.memory.content（默认文字）。发给 Claude。
+# 7. Claude 看到 system 里的记忆、工具列表里有 save_memory、用户说「记忆一下」，回一个 tool_use 块：name: save_memory，input: {"content": "用户喜欢苹果"}，可能带一句文字。
+# 8. brain.py：_parse_response 把块列表拆成 Thought，tool_calls 里有一个 ToolCall。
+# 9. agent.py：把 raw_content 以 assistant 身份 append 进历史。有 tool_calls，不 break。
+# 10. agent.py：_execute_tool("save_memory", {"content": "..."})，get_tool 找到 SaveMemory，调 tool.execute(self.context, content="...")。
+# 11. tools.py：SaveMemory.execute 从 context.memory 拿到 Memory 对象，调 memory.save(content)。
+# 12. memory.py：save 更新 self.content，打开 .nanocode/memory.md 写入。文件此刻已变。
+# 13. tools.py：返回「Memory updated successfully!」。
+# 14. agent.py：包成 tool_result 块，以 user 身份 append 进历史。回到循环顶。
+
+# 第 2 圈
+# 15. brain.py：再拼 payload。注意 system 现在是新的 memory.content，因为 Brain 和 Agent 拿的是同一个对象。
+# 16. Claude 看到工具结果，回一句文字「好的，我记住了」，没有 tool_calls。
+# 17. agent.py：append assistant 轮次，收集文字，没有 tool_calls，break。返回文字。
+# 18. main.py：print 出来。
+
+# 退出再启动
+# 19. main.py：Memory(...) 发现文件存在，读进 content：「用户喜欢苹果」。
+# 20. 你问「我喜欢什么水果」，第 1 圈 brain.py 把它放进 system，Claude 直接答「苹果」，不需要任何工具。

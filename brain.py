@@ -87,7 +87,9 @@ class Brain:
 
 
 class ClaudeBrain(Brain):
-    def __init__(self, model="claude-sonnet-5-5", tools=None):  # 推論モデル
+    def __init__(
+        self, model="claude-sonnet-5-5", tools=None, memory=None
+    ):  # 推論モデル
         load_dotenv()
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.model = model
@@ -98,6 +100,7 @@ class ClaudeBrain(Brain):
         }
         self.tools = tools or []
         self.last_usage = None
+        self.memory = memory
 
     def think(self, conversation) -> Thought:
         payload = {
@@ -108,6 +111,9 @@ class ClaudeBrain(Brain):
 
         if self.tools:
             payload["tools"] = tool_definitions(self.tools)
+
+        if self.memory:
+            payload["system"] = self.memory.content
 
         resp = requests.post(
             anthorpic_url, headers=self.headers, json=payload, timeout=120
@@ -128,6 +134,7 @@ class SarashinaBrain(Brain):
         tools=None,
         temperature=None,
         max_completion_tokens=4096,
+        memory=None,
     ):
         load_dotenv()
         self.api_key = os.getenv("SARASHINA_API_KEY")
@@ -140,6 +147,7 @@ class SarashinaBrain(Brain):
             "content-type": "application/json",
         }
         self.tools = tools or []
+        self.memory = memory
 
     def _tool_definitions(self):
         return [
@@ -221,9 +229,14 @@ class SarashinaBrain(Brain):
         return out
 
     def think(self, conversation) -> Thought:
+        messages = self._to_messages(conversation)
+        if self.memory:
+            # insert(0, x) 是「放到第 0 位」，后面的整体后移。OpenAI 风格要求 system 消息是第一条。
+            messages.insert(0, {"role": "system", "content": self.memory.content})
+
         payload = {
             "model": self.model,
-            "messages": self._to_messages(conversation),
+            "messages": messages,
             "max_completion_tokens": self.max_completion_tokens,
         }
         if self.temperature is not None:
@@ -251,5 +264,5 @@ class SarashinaBrain(Brain):
 
 BRAINS = {
     "claude": ClaudeBrain,
-    "sarashina": SarashinaBrain,  # test expects this key; your second provider
+    "sarashina": SarashinaBrain,
 }

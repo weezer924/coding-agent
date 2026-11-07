@@ -18,6 +18,7 @@ class Agent:
         self.conversation = []
         self.tools = tools
         self.context = ToolContext(memory=memory)
+        self.memory = memory
 
     def _execute_tool(self, tool_name: str, args) -> str:
         tool = get_tool(self.tools, tool_name)
@@ -43,7 +44,7 @@ class Agent:
         if text == "/switch":
             names = list(BRAINS)
             self.brain_name = names[(names.index(self.brain_name) + 1) % len(names)]
-            self.brain = BRAINS[self.brain_name](tools=self.tools)
+            self.brain = BRAINS[self.brain_name](tools=self.tools, memory=self.memory)
             return f"Switched to {self.brain_name}"
 
         start = len(self.conversation)

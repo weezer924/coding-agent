@@ -1,5 +1,6 @@
 from agent import Agent, AgentStop
 from brain import ClaudeBrain
+from memory import Memory
 from tools import tools
 
 
@@ -8,8 +9,9 @@ from tools import tools
 # Print: print(output).
 # Loop: while True goes back to Read.
 def main():
-    brain = ClaudeBrain(tools=tools)
-    agent = Agent(brain, tools=tools)
+    memory = Memory(".nanocode/memory.md")
+    brain = ClaudeBrain(tools=tools, memory=memory)
+    agent = Agent(brain, tools=tools, memory=memory)
     print("Nanocode v0.3(Tool using)")
     print("Type /q to quit.")
 
