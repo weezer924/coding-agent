@@ -64,20 +64,27 @@ class Agent:
             if thought.text:
                 output.append(thought.text)
 
+            ## guardrails for tools
             if not thought.tool_calls:
                 break
 
-            results = []
+            ## Tool calls
+            tool_call_results = []
             for call in thought.tool_calls:
                 if call.raw_args is not None:
-                    result = (
+                    execute_result = (
                         f"Error: arguments were not valid JSON: {call.raw_args[:200]}"
                     )
                 else:
-                    result = self._execute_tool(call.name, call.args)
-                results.append(
-                    {"type": "tool_result", "tool_use_id": call.id, "content": result}
+                    execute_result = self._execute_tool(call.name, call.args)
+                tool_call_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": call.id,
+                        "content": execute_result,
+                    }
                 )
-            self.conversation.append({"role": "user", "content": results})
+
+            self.conversation.append({"role": "user", "content": tool_call_results})
 
         return "\n".join(output)
