@@ -65,8 +65,8 @@ Let me know if you’d like to read it back, modify it, or work with any other f
 | 03 | done | `Brain.think(conversation) -> Thought`, `Agent.conversation` | The API is stateless; the list in `Agent` is the only memory. A failed call must pop the user turn or the next call breaks. The model can return a `thinking` block first, so never index `content[0]`. |
 | 04 | done | `Brain` base class, `BRAINS` registry, `/switch` | History is provider-neutral; only the brain converts. Roles are `user` / `assistant`, nothing else. |
 | 05 | done | `ReadFile`, `WriteFile`, tool schemas, the agentic loop | Tool use is a protocol: send schemas, get back a structured call, run it, return a `tool_result` block. Assistant turns must be stored as raw blocks so ids line up. Tools return strings, never raise. Cap the loop. |
-| 06 | next | `Memory` file, `ToolContext`, `SaveMemory` tool; memory goes into the system prompt | |
-| 07 | | Plan mode: a read-only mode that blocks `write_file` until the user approves | |
+| 06 | done | `Memory` file, `ToolContext`, `SaveMemory` tool; memory goes into the system prompt | |
+| 07 | next | Plan mode: a read-only mode that blocks `write_file` until the user approves | |
 | 08 | | Codebase context: `ListFiles`, `SearchCodebase`, context compaction | |
 | 09 | | `RunCommand` tool: run tests, feed stdout/stderr back into the loop | |
 | 10 | | Local models via Ollama, context-window detection | |
