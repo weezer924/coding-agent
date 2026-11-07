@@ -124,7 +124,7 @@ class ClaudeBrain(Brain):
 class SarashinaBrain(Brain):
     def __init__(
         self,
-        model="sarashina3-mini",
+        model="sarashina3.2-mini-thinking",
         tools=None,
         temperature=None,
         max_completion_tokens=4096,
