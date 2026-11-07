@@ -9,7 +9,7 @@ class ReadFile:
         "required": ["path"],
     }
 
-    def execute(self, path):
+    def execute(self, context, path):
         try:
             with open(path) as f:
                 lines = f.readlines()
@@ -33,7 +33,7 @@ class WriteFile:
         "required": ["path", "content"],
     }
 
-    def execute(self, path, content):
+    def execute(self, context, path, content):
         print(f"  → Writing {path}")
         try:
             with open(path, "w", encoding="utf-8") as f:
@@ -45,27 +45,24 @@ class WriteFile:
 
 class SaveMemory:
     name = "save_memory"
-    description = "Writes content to a memory. OVERWRITES existing content."
+    description = "Updates your internal memory/scratchpad. Use this to remember user preferences."
     input_schema = {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Path to the file"},
             "content": {
                 "type": "string",
-                "description": "The full content to write",
+                "description": "The full text to save.",
             },
         },
-        "required": ["path", "content"],
+        "required": ["content"],
     }
 
-    def execute(self, path, content):
-        print(f"  → Writing {path}")
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(content)
-            return f"Successfully wrote {len(content)} characters to {path}"
-        except Exception as e:
-            return f"Error writing file: {e}"
+    def execute(self, context, content):
+        print("  → Saving memory")
+        if context.memory is None:
+            return "Error: Memory not available"
+        context.memory.save(content)
+        return "Memory updated successfully!"
 
 
 tools = [ReadFile(), WriteFile(), SaveMemory()]

@@ -11,17 +11,25 @@ class Memory:
         self.content = ""
         self.path = path
 
-        if os.path.exists(path=path):
-            open(path)
-            os.makedirs(dirname, exist_ok=True)
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+
+        if os.path.exists(path):
+            with open(path) as f:
+                self.content = f.read()
+        else:
+            self.save("Nanocode")
 
     def save(self, content: str):
         self.content = content
+        with open(self.path, "w") as f:
+            f.write(content)
 
 
 class ToolContext:
     def __init__(
         self,
-        memory,
+        memory=None,
     ) -> None:
         self.memory = memory
