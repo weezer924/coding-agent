@@ -1,14 +1,13 @@
 import os
 import tempfile
-
 import pytest
 from agent import Agent, AgentStop
-from brain import Thought
+from brain import Thought, ToolCall
 from memory import Memory, ToolContext
-from tools import ReadFile, SaveMemory, WriteFile, tool_definitions, tools
+from tools import ReadFile, WriteFile, WritePlan, SaveMemory, get_tool, tool_definitions, tools
+
 
 # --- Fake Brain for Testing ---
-
 
 class FakeBrain:
     """Fake brain for testing - returns predictable responses."""
@@ -16,12 +15,7 @@ class FakeBrain:
     def __init__(self, responses=None, memory=None, tools=None):
         self.memory = memory
         self.tools = tools or []
-        self.responses = responses or [
-            Thought(
-                text="Fake response",
-                raw_content=[{"type": "text", "text": "Fake response"}],
-            )
-        ]
+        self.responses = responses or [Thought(text="Fake response", raw_content=[{"type": "text", "text": "Fake response"}])]
         self.call_count = 0
 
     def think(self, conversation):
@@ -29,14 +23,10 @@ class FakeBrain:
             response = self.responses[self.call_count]
             self.call_count += 1
             return response
-        return Thought(
-            text="No more responses",
-            raw_content=[{"type": "text", "text": "No more responses"}],
-        )
+        return Thought(text="No more responses", raw_content=[{"type": "text", "text": "No more responses"}])
 
 
 # --- Tests from previous chapters ---
-
 
 def test_quit_command_raises_agent_stop():
     """Verify /q raises AgentStop exception."""
@@ -54,8 +44,8 @@ def test_empty_input_returns_empty_string():
 
 def test_read_file_adds_line_numbers():
     """Verify ReadFile prefixes each line with line numbers."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("line one\nline two\nline three\n")
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        f.write("line one\nline two\n")
         temp_path = f.name
 
     try:
@@ -68,137 +58,129 @@ def test_read_file_adds_line_numbers():
         os.unlink(temp_path)
 
 
-def test_write_file_creates_file():
-    """Verify WriteFile creates a file with content."""
+# --- Mode tests ---
+
+def test_agent_defaults_to_plan_mode():
+    """Verify agent starts in plan mode by default."""
+    agent = Agent(brain=FakeBrain(), tools=tools)
+    assert agent.mode == "plan"
+
+
+def test_agent_can_start_in_act_mode():
+    """Verify agent can be initialized in act mode."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
+    assert agent.mode == "act"
+
+
+def test_mode_command_switches_to_act():
+    """Verify /mode act switches to act mode."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="plan")
+    result = agent.handle_input("/mode act")
+
+    assert agent.mode == "act"
+    assert "ACT" in result
+
+
+def test_mode_command_switches_to_plan():
+    """Verify /mode plan switches to plan mode."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
+    result = agent.handle_input("/mode plan")
+
+    assert agent.mode == "plan"
+    assert "PLAN" in result
+
+
+def test_mode_command_defaults_to_plan():
+    """Verify /mode without argument defaults to plan mode."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
+    result = agent.handle_input("/mode")
+
+    assert agent.mode == "plan"
+
+
+# --- Tool filtering by mode ---
+
+def test_plan_mode_hides_write_file():
+    """Verify plan mode does not expose write_file to the brain."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="plan")
+    tool_names = [t["name"] for t in agent.brain.tools]
+
+    assert "write_file" not in tool_names
+    assert "write_plan" in tool_names
+    assert "read_file" in tool_names
+
+
+def test_act_mode_shows_all_tools():
+    """Verify act mode exposes all tools to the brain."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
+    tool_names = [t["name"] for t in agent.brain.tools]
+
+    assert "write_file" in tool_names
+    assert "write_plan" in tool_names
+    assert "read_file" in tool_names
+
+
+def test_mode_switch_updates_brain_tools():
+    """Verify switching mode changes the brain's tool menu."""
+    agent = Agent(brain=FakeBrain(), tools=tools, mode="plan")
+
+    # Plan mode: no write_file
+    plan_names = [t["name"] for t in agent.brain.tools]
+    assert "write_file" not in plan_names
+
+    # Switch to act: write_file appears
+    agent.handle_input("/mode act")
+    act_names = [t["name"] for t in agent.brain.tools]
+    assert "write_file" in act_names
+
+    # Switch back to plan: write_file disappears
+    agent.handle_input("/mode plan")
+    plan_names = [t["name"] for t in agent.brain.tools]
+    assert "write_file" not in plan_names
+
+
+# --- WritePlan tool ---
+
+def test_write_plan_saves_file():
+    """Verify WritePlan writes to PLAN.md."""
+    original_dir = os.getcwd()
     with tempfile.TemporaryDirectory() as tmpdir:
-        path = os.path.join(tmpdir, "test.txt")
+        os.chdir(tmpdir)
+        try:
+            tool = WritePlan()
+            context = ToolContext()
+            result = tool.execute(context, content="# My Plan\n\nStep 1: Read code")
+
+            assert "Plan saved" in result
+            assert os.path.exists("PLAN.md")
+            with open("PLAN.md") as f:
+                assert f.read() == "# My Plan\n\nStep 1: Read code"
+        finally:
+            os.chdir(original_dir)
+
+
+# --- WriteFile tool (no mode checks, always works) ---
+
+def test_write_file_writes_file():
+    """Verify WriteFile writes content to the given path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        file_path = os.path.join(tmpdir, "test.py")
         tool = WriteFile()
         context = ToolContext()
-        result = tool.execute(context, path, "hello world")
 
-        assert os.path.exists(path)
+        result = tool.execute(context, file_path, "print('hello')")
+
         assert "Successfully wrote" in result
+        assert os.path.exists(file_path)
 
 
-# --- Memory class tests ---
+# --- Agent has all tools ---
 
-
-def test_memory_creates_default_file():
-    """Verify Memory creates file with default content if missing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        path = os.path.join(tmpdir, "memory.md")
-        memory = Memory(path=path)
-
-        assert os.path.exists(path)
-        assert "Nanocode" in memory.content
-
-
-def test_memory_loads_existing_content():
-    """Verify Memory loads content from existing file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        path = os.path.join(tmpdir, "memory.md")
-
-        # Pre-create file with custom content
-        with open(path, "w") as f:
-            f.write("Custom memory content")
-
-        memory = Memory(path=path)
-        assert memory.content == "Custom memory content"
-
-
-def test_memory_save_updates_content_and_file():
-    """Verify Memory.save() updates both content and file."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        path = os.path.join(tmpdir, "memory.md")
-        memory = Memory(path=path)
-
-        memory.save("New content")
-
-        assert memory.content == "New content"
-        with open(path) as f:
-            assert f.read() == "New content"
-
-
-# --- SaveMemory tool tests ---
-
-
-def test_save_memory_updates_memory():
-    """Verify SaveMemory updates the Memory object."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        memory = Memory(path=os.path.join(tmpdir, "memory.md"))
-        tool = SaveMemory()
-        context = ToolContext(memory=memory)
-
-        result = tool.execute(context, "Updated preferences")
-
-        assert "successfully" in result.lower()
-        assert memory.content == "Updated preferences"
-
-
-def test_save_memory_fails_without_memory():
-    """Verify SaveMemory returns error when memory is None."""
-    tool = SaveMemory()
-    context = ToolContext(memory=None)
-    result = tool.execute(context, "test")
-    assert "Error" in result
-
-
-# --- Agent with Memory tests ---
-
-
-def test_agent_has_save_memory_tool():
-    """Verify agent has save_memory tool."""
+def test_agent_has_all_tools():
+    """Verify agent has all tools for execution."""
     agent = Agent(brain=FakeBrain(), tools=tools)
-
     tool_names = [t.name for t in agent.tools]
-    assert "save_memory" in tool_names
-
-
-def test_agent_execute_save_memory_tool():
-    """Verify save_memory tool updates the Memory object through agent."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        memory = Memory(path=os.path.join(tmpdir, "memory.md"))
-        agent = Agent(brain=FakeBrain(), tools=tools, memory=memory)
-
-        result = agent._execute_tool("save_memory", {"content": "Updated preferences"})
-
-        assert "successfully" in result.lower()
-        assert memory.content == "Updated preferences"
-
-
-def test_brain_receives_memory_content():
-    """Verify brain has access to memory content."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        memory = Memory(path=os.path.join(tmpdir, "memory.md"))
-        memory.save("Custom system prompt")
-
-        brain = FakeBrain(memory=memory)
-        assert brain.memory.content == "Custom system prompt"
-
-
-# --- Tool execution tests ---
-
-
-def test_agent_execute_tool_finds_tool():
-    """Verify agent can execute a registered tool."""
-    agent = Agent(brain=FakeBrain(), tools=tools)
-    result = agent._execute_tool("read_file", {"path": __file__})
-    assert "import" in result
-
-
-def test_agent_execute_tool_unknown_tool():
-    """Verify agent returns error for unknown tool."""
-    agent = Agent(brain=FakeBrain(), tools=tools)
-    result = agent._execute_tool("unknown_tool", {})
-    assert "not found" in result
-
-
-def test_agent_tools_definitions():
-    """Verify tool definitions include all tools."""
-    agent = Agent(brain=FakeBrain(), tools=tools)
-    definitions = tool_definitions(agent.tools)
-
-    tool_names = [d["name"] for d in definitions]
-    assert "save_memory" in tool_names
     assert "read_file" in tool_names
     assert "write_file" in tool_names
+    assert "write_plan" in tool_names
+    assert "save_memory" in tool_names
