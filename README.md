@@ -10,6 +10,7 @@ Here is the introduce for each files:
 | `agent.py` | the conversation list and the loop | HTTP, file I/O |
 | `brain.py` | one class per LLM provider, normalised to a `Thought` | history, tools' internals |
 | `tools.py` | file read/write, the JSON Schema the model sees | the model, the loop |
+| `memory.py` | `Memory`: one markdown file read at startup, injected as system prompt, overwritten by `save_memory`; `ToolContext`: the bag handed to every tool | the model, the loop, HTTP |
 | `main.py` | the Read-Eval-Print Loop(REPL) and wiring | everything else |
 
 ## Setup
