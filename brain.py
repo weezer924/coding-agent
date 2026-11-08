@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import requests
 from dotenv import load_dotenv
-from tools import tool_definitions
 
 
 @dataclass
@@ -87,9 +86,7 @@ class Brain:
 
 
 class ClaudeBrain(Brain):
-    def __init__(
-        self, model="claude-sonnet-5-5", tools=None, memory=None
-    ):  # 推論モデル
+    def __init__(self, model="claude-sonnet-5-5", tools=None):  # 推論モデル
         load_dotenv()
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.model = model
@@ -100,7 +97,7 @@ class ClaudeBrain(Brain):
         }
         self.tools = tools or []
         self.last_usage = None
-        self.memory = memory
+        self.system = ""
 
     def think(self, conversation) -> Thought:
         payload = {
@@ -110,10 +107,10 @@ class ClaudeBrain(Brain):
         }
 
         if self.tools:
-            payload["tools"] = tool_definitions(self.tools)
+            payload["tools"] = self.tools
 
-        if self.memory:
-            payload["system"] = self.memory.content
+        if self.system:
+            payload["system"] = self.system
 
         resp = requests.post(
             anthorpic_url, headers=self.headers, json=payload, timeout=120
@@ -134,7 +131,6 @@ class SarashinaBrain(Brain):
         tools=None,
         temperature=None,
         max_completion_tokens=4096,
-        memory=None,
     ):
         load_dotenv()
         self.api_key = os.getenv("SARASHINA_API_KEY")
@@ -147,16 +143,16 @@ class SarashinaBrain(Brain):
             "content-type": "application/json",
         }
         self.tools = tools or []
-        self.memory = memory
+        self.system = ""
 
     def _tool_definitions(self):
         return [
             {
                 "type": "function",
                 "function": {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.input_schema,
+                    "name": t["name"],
+                    "description": t["description"],
+                    "parameters": t["input_schema"],
                 },
             }
             for t in self.tools
@@ -230,15 +226,15 @@ class SarashinaBrain(Brain):
 
     def think(self, conversation) -> Thought:
         messages = self._to_messages(conversation)
-        if self.memory:
-            # insert(0, x) 是「放到第 0 位」，后面的整体后移。OpenAI 风格要求 system 消息是第一条。
-            messages.insert(0, {"role": "system", "content": self.memory.content})
 
         payload = {
             "model": self.model,
             "messages": messages,
             "max_completion_tokens": self.max_completion_tokens,
         }
+        if self.system:
+            payload["system"] = self.system
+
         if self.temperature is not None:
             payload["temperature"] = self.temperature
 

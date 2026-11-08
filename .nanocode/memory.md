@@ -1,0 +1,1 @@
+User preferences: Likes apples and bananas. Prefers short answers.

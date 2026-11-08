@@ -1,6 +1,6 @@
 from brain import BRAINS
 from memory import ToolContext
-from tools import get_tool
+from tools import get_tool, tool_definitions
 
 
 class AgentStop(Exception):
@@ -11,7 +11,7 @@ class Agent:
     """A coding agent that processes user input."""
 
     def __init__(
-        self, brain, brain_name: str = "claude", tools=None, memory=None
+        self, brain, brain_name: str = "claude", tools=None, memory=None, mode="plan"
     ) -> None:
         self.brain = brain
         self.brain_name = brain_name
@@ -19,6 +19,19 @@ class Agent:
         self.tools = tools
         self.context = ToolContext(memory=memory)
         self.memory = memory
+        self.mode = mode
+        self.brain.tools = self._tools_for_mode()
+        self.brain.system = self._build_system_prompt()
+
+    def _build_system_prompt(self):
+        """Build system prompt from memory and current mode."""
+        parts = [self.memory.content] if self.memory else []
+        if self.mode == "plan":
+            parts.append(
+                "You are in PLAN mode. You cannot write code files. "
+                "Use write_plan to save your plans to PLAN.md."
+            )
+        return "\n".join(parts)
 
     def _execute_tool(self, tool_name: str, args) -> str:
         tool = get_tool(self.tools, tool_name)
@@ -31,6 +44,16 @@ class Agent:
         except TypeError as e:
             # Missing/extra keys from the model must not kill the loop.
             return f"Error: invalid arguments for {tool_name}: {e}"
+
+    def _tools_for_mode(self):
+        if self.mode == "plan":
+            result = []
+            for t in self.tools:
+                if t.name != "write_file":
+                    result.append(t)
+            return tool_definitions(result)
+        else:
+            return tool_definitions(self.tools)
 
     def handle_input(self, user_input: str) -> str:
         text = user_input.strip()
@@ -45,7 +68,21 @@ class Agent:
             names = list(BRAINS)
             self.brain_name = names[(names.index(self.brain_name) + 1) % len(names)]
             self.brain = BRAINS[self.brain_name](tools=self.tools, memory=self.memory)
+            self.brain.tools = self._tools_for_mode()
+            self.brain.system = self._build_system_prompt()
             return f"Switched to {self.brain_name}"
+
+        if text.startswith("/mode"):
+            if text == "/mode act":
+                self.mode = "act"
+                self.brain.tools = self._tools_for_mode()
+                self.brain.system = self._build_system_prompt()
+                return "Swiched to ACT MODE"
+            else:
+                self.mode = "plan"
+                self.brain.tools = self._tools_for_mode()
+                self.brain.system = self._build_system_prompt()
+                return "Swiched to PLAN MODE"
 
         start = len(self.conversation)
         self.conversation.append({"role": "user", "content": text})

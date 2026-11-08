@@ -65,7 +65,33 @@ class SaveMemory:
         return "Memory updated successfully!"
 
 
-tools = [ReadFile(), WriteFile(), SaveMemory()]
+class WritePlan:
+    """plan mode restricts the tool set to read-only plus one plan artifact, and the approval gate is the human switching modes”"""
+
+    name = "write_plan"
+    description = "Saves a plan to PLAN.md. Use this to outline your approach before making changes."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "The plan content in markdown",
+            },
+        },
+        "required": ["content"],
+    }
+
+    def execute(self, context, content):
+        print("  → Writing PLAN")
+        try:
+            with open("PLAN.md", "w", encoding="utf-8") as f:
+                f.write(content)
+            return "Plan saved"
+        except Exception as e:
+            return f"Error writing plan: {e}"
+
+
+tools = [ReadFile(), WriteFile(), SaveMemory(), WritePlan()]
 
 
 def get_tool(tools, name):
