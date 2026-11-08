@@ -67,7 +67,7 @@ class Agent:
         if text == "/switch":
             names = list(BRAINS)
             self.brain_name = names[(names.index(self.brain_name) + 1) % len(names)]
-            self.brain = BRAINS[self.brain_name](tools=self.tools, memory=self.memory)
+            self.brain = BRAINS[self.brain_name](tools=self.tools)
             self.brain.tools = self._tools_for_mode()
             self.brain.system = self._build_system_prompt()
             return f"Switched to {self.brain_name}"
