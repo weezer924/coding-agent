@@ -77,12 +77,12 @@ class Agent:
                 self.mode = "act"
                 self.brain.tools = self._tools_for_mode()
                 self.brain.system = self._build_system_prompt()
-                return "Swiched to ACT MODE"
+                return "Switched to ACT MODE"
             else:
                 self.mode = "plan"
                 self.brain.tools = self._tools_for_mode()
                 self.brain.system = self._build_system_prompt()
-                return "Swiched to PLAN MODE"
+                return "Switched to PLAN MODE"
 
         start = len(self.conversation)
         self.conversation.append({"role": "user", "content": text})
