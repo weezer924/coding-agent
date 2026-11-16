@@ -109,14 +109,14 @@ class Agent:
                 self.conversation = self.conversation[:start]
                 return f"Error: {e}"
 
+            if self.brain.last_input_tokens > self.brain.context_limit * 0.75:
+                self._compact_conversation()
+
             self.conversation.append(
                 {"role": "assistant", "content": thought.raw_content}
             )
             if thought.text:
                 output.append(thought.text)
-
-            if self.brain.last_input_tokens > self.brain.context_limit * 0.75:
-                self._compact_conversation()
 
             ## guardrails for tools
             if not thought.tool_calls:

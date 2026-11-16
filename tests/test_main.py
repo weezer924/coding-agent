@@ -4,7 +4,8 @@ import tempfile
 import pytest
 
 from agent import Agent, AgentStop
-from brain import Thought
+from brain import Thought, ClaudeBrain, SarashinaBrain
+import brain as brain_module
 from memory import ToolContext
 from tools import (
     ListFiles,
@@ -329,3 +330,40 @@ def test_compact_conversation_summarizes():
     # After compaction, conversation should be short (summary + current response)
     assert len(agent.conversation) <= 4
     assert "Summary" in str(agent.conversation[0]["content"])
+
+
+# --- Token tracking tests (offline, requests.post is faked) ---
+
+class FakeResponse:
+    status_code = 200
+    text = ""
+
+    def __init__(self, body):
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+def test_claude_brain_tracks_input_tokens(monkeypatch):
+    body = {
+        "content": [{"type": "text", "text": "hi"}],
+        "usage": {"input_tokens": 1234, "output_tokens": 5},
+    }
+    monkeypatch.setattr(brain_module.requests, "post", lambda *a, **kw: FakeResponse(body))
+    brain = ClaudeBrain()
+    brain.think([{"role": "user", "content": "hi"}])
+    assert brain.last_input_tokens == 1234
+    assert brain.context_limit == 200_000
+
+
+def test_sarashina_brain_tracks_prompt_tokens(monkeypatch):
+    body = {
+        "choices": [{"message": {"role": "assistant", "content": "hi"}}],
+        "usage": {"prompt_tokens": 1234, "completion_tokens": 5},
+    }
+    monkeypatch.setattr(brain_module.requests, "post", lambda *a, **kw: FakeResponse(body))
+    brain = SarashinaBrain()
+    brain.think([{"role": "user", "content": "hi"}])
+    assert brain.last_input_tokens == 1234
+    assert brain.context_limit == 128_000
