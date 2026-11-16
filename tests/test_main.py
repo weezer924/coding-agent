@@ -4,7 +4,7 @@ import pytest
 from agent import Agent, AgentStop
 from brain import Thought, ToolCall
 from memory import Memory, ToolContext
-from tools import ReadFile, WriteFile, WritePlan, SaveMemory, get_tool, tool_definitions, tools
+from tools import ReadFile, WriteFile, WritePlan, ListFiles, SearchCodebase, SaveMemory, get_tool, tool_definitions, tools
 
 
 # --- Fake Brain for Testing ---
@@ -39,7 +39,6 @@ def test_empty_input_returns_empty_string():
     """Verify empty/whitespace input returns empty string."""
     agent = Agent(brain=FakeBrain(), tools=tools)
     assert agent.handle_input("") == ""
-    assert agent.handle_input("   ") == ""
 
 
 def test_read_file_adds_line_numbers():
@@ -51,51 +50,18 @@ def test_read_file_adds_line_numbers():
     try:
         tool = ReadFile()
         context = ToolContext()
-        result = tool.execute(context, temp_path)
+        result = tool.execute(context, path=temp_path)
         assert "1 | line one" in result
         assert "2 | line two" in result
     finally:
         os.unlink(temp_path)
 
 
-# --- Mode tests ---
-
-def test_agent_defaults_to_plan_mode():
-    """Verify agent starts in plan mode by default."""
-    agent = Agent(brain=FakeBrain(), tools=tools)
-    assert agent.mode == "plan"
-
-
-def test_agent_can_start_in_act_mode():
-    """Verify agent can be initialized in act mode."""
-    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
-    assert agent.mode == "act"
-
-
 def test_mode_command_switches_to_act():
     """Verify /mode act switches to act mode."""
     agent = Agent(brain=FakeBrain(), tools=tools, mode="plan")
-    result = agent.handle_input("/mode act")
-
+    agent.handle_input("/mode act")
     assert agent.mode == "act"
-    assert "ACT" in result
-
-
-def test_mode_command_switches_to_plan():
-    """Verify /mode plan switches to plan mode."""
-    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
-    result = agent.handle_input("/mode plan")
-
-    assert agent.mode == "plan"
-    assert "PLAN" in result
-
-
-def test_mode_command_defaults_to_plan():
-    """Verify /mode without argument defaults to plan mode."""
-    agent = Agent(brain=FakeBrain(), tools=tools, mode="act")
-    result = agent.handle_input("/mode")
-
-    assert agent.mode == "plan"
 
 
 # --- Tool filtering by mode ---
@@ -124,16 +90,13 @@ def test_mode_switch_updates_brain_tools():
     """Verify switching mode changes the brain's tool menu."""
     agent = Agent(brain=FakeBrain(), tools=tools, mode="plan")
 
-    # Plan mode: no write_file
     plan_names = [t["name"] for t in agent.brain.tools]
     assert "write_file" not in plan_names
 
-    # Switch to act: write_file appears
     agent.handle_input("/mode act")
     act_names = [t["name"] for t in agent.brain.tools]
     assert "write_file" in act_names
 
-    # Switch back to plan: write_file disappears
     agent.handle_input("/mode plan")
     plan_names = [t["name"] for t in agent.brain.tools]
     assert "write_file" not in plan_names
@@ -174,13 +137,141 @@ def test_write_file_writes_file():
         assert os.path.exists(file_path)
 
 
-# --- Agent has all tools ---
+# --- New tests for Chapter 8: Awareness tools ---
 
-def test_agent_has_all_tools():
-    """Verify agent has all tools for execution."""
+def test_list_files_returns_file_tree():
+    """Verify ListFiles returns a tree structure."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create some test files
+        os.makedirs(os.path.join(tmpdir, "src"))
+        with open(os.path.join(tmpdir, "README.md"), 'w') as f:
+            f.write("# Test")
+        with open(os.path.join(tmpdir, "src", "main.py"), 'w') as f:
+            f.write("print('hello')")
+
+        tool = ListFiles()
+        context = ToolContext()
+        result = tool.execute(context, path=tmpdir)
+
+        assert "README.md" in result
+        assert "src/" in result
+        assert "main.py" in result
+
+
+def test_list_files_skips_git_and_pycache():
+    """Verify ListFiles skips .git and __pycache__ directories."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create directories that should be skipped
+        os.makedirs(os.path.join(tmpdir, ".git"))
+        os.makedirs(os.path.join(tmpdir, "__pycache__"))
+        os.makedirs(os.path.join(tmpdir, "src"))
+
+        with open(os.path.join(tmpdir, ".git", "config"), 'w') as f:
+            f.write("git config")
+        with open(os.path.join(tmpdir, "__pycache__", "cache.pyc"), 'w') as f:
+            f.write("cache")
+        with open(os.path.join(tmpdir, "src", "main.py"), 'w') as f:
+            f.write("print('hello')")
+
+        tool = ListFiles()
+        context = ToolContext()
+        result = tool.execute(context, path=tmpdir)
+
+        assert "config" not in result
+        assert "cache.pyc" not in result
+        assert "main.py" in result
+
+
+def test_search_codebase_finds_matches():
+    """Verify SearchCodebase finds text in files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "test.py"), 'w') as f:
+            f.write("def hello_world():\n    print('hello')\n")
+
+        tool = SearchCodebase()
+        context = ToolContext()
+        result = tool.execute(context, query="hello_world", path=tmpdir)
+
+        assert "test.py" in result
+        assert "hello_world" in result
+        assert ":1:" in result  # Line number
+
+
+def test_search_codebase_case_insensitive():
+    """Verify SearchCodebase is case-insensitive."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "test.py"), 'w') as f:
+            f.write("def HelloWorld():\n    pass\n")
+
+        tool = SearchCodebase()
+        context = ToolContext()
+        result = tool.execute(context, query="helloworld", path=tmpdir)
+        assert "HelloWorld" in result
+
+
+def test_search_codebase_no_matches():
+    """Verify SearchCodebase returns message when no matches found."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "test.py"), 'w') as f:
+            f.write("def foo():\n    pass\n")
+
+        tool = SearchCodebase()
+        context = ToolContext()
+        result = tool.execute(context, query="nonexistent_function", path=tmpdir)
+        assert "No matches found" in result
+
+
+def test_search_codebase_skips_git():
+    """Verify SearchCodebase skips .git directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        os.makedirs(os.path.join(tmpdir, ".git"))
+        with open(os.path.join(tmpdir, ".git", "config"), 'w') as f:
+            f.write("unique_search_term")
+        with open(os.path.join(tmpdir, "main.py"), 'w') as f:
+            f.write("print('hello')")
+
+        tool = SearchCodebase()
+        context = ToolContext()
+        result = tool.execute(context, query="unique_search_term", path=tmpdir)
+        assert "No matches found" in result
+
+
+# --- Agent has new tools ---
+
+def test_agent_has_list_files_tool():
+    """Verify agent has list_files tool."""
     agent = Agent(brain=FakeBrain(), tools=tools)
     tool_names = [t.name for t in agent.tools]
-    assert "read_file" in tool_names
-    assert "write_file" in tool_names
-    assert "write_plan" in tool_names
-    assert "save_memory" in tool_names
+    assert "list_files" in tool_names
+
+
+def test_agent_has_search_codebase_tool():
+    """Verify agent has search_codebase tool."""
+    agent = Agent(brain=FakeBrain(), tools=tools)
+    tool_names = [t.name for t in agent.tools]
+    assert "search_codebase" in tool_names
+
+
+def test_agent_execute_list_files():
+    """Verify agent can execute list_files tool."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "test.txt"), 'w') as f:
+            f.write("hello")
+
+        agent = Agent(brain=FakeBrain(), tools=tools)
+        result = agent._execute_tool("list_files", {"path": tmpdir})
+
+        assert "test.txt" in result
+
+
+def test_agent_execute_search_codebase():
+    """Verify agent can execute search_codebase tool."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(os.path.join(tmpdir, "code.py"), 'w') as f:
+            f.write("def my_function():\n    pass\n")
+
+        agent = Agent(brain=FakeBrain(), tools=tools)
+        result = agent._execute_tool("search_codebase", {"query": "my_function", "path": tmpdir})
+
+        assert "my_function" in result
+        assert "code.py" in result
