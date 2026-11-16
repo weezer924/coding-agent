@@ -57,17 +57,25 @@ class Agent:
 
     def _compact_conversation(self):
         print("-> Compacting...")
-        compact_prompt = {
-            "role": "user",
-            "content": "Summarize this conversation so far in a few paragraphs. Include: files read or modified, key decisions made, and any task still in progress. This summary will replace the conversation history.",
-        }
-        summary = self.brain.think(self.conversation + [compact_prompt])
-        self.conversation = [
-            {
+
+        ## save the tool use not to compact
+        saved = self.brain.tools
+        self.brain.tools = []
+
+        try:
+            compact_prompt = {
                 "role": "user",
-                "content": "Summary of earlier conversation:\n" + summary.text,
+                "content": "Summarize this conversation so far in a few paragraphs. Include: files read or modified, key decisions made, and any task still in progress. This summary will replace the conversation history.",
             }
-        ]
+            summary = self.brain.think(self.conversation + [compact_prompt])
+            self.conversation = [
+                {
+                    "role": "user",
+                    "content": "Summary of earlier conversation:\n" + summary.text,
+                }
+            ]
+        finally:
+            self.brain.tools = saved
 
     def handle_input(self, user_input: str) -> str:
         text = user_input.strip()
