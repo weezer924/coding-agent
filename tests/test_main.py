@@ -1,21 +1,38 @@
 import os
 import tempfile
-import pytest
-from agent import Agent, AgentStop
-from brain import Thought, ToolCall
-from memory import Memory, ToolContext
-from tools import ReadFile, WriteFile, WritePlan, ListFiles, SearchCodebase, SaveMemory, get_tool, tool_definitions, tools
 
+import pytest
+
+from agent import Agent, AgentStop
+from brain import Thought
+from memory import ToolContext
+from tools import (
+    ListFiles,
+    ReadFile,
+    SearchCodebase,
+    WriteFile,
+    WritePlan,
+    tools,
+)
 
 # --- Fake Brain for Testing ---
+
 
 class FakeBrain:
     """Fake brain for testing - returns predictable responses."""
 
+    context_limit = 200_000
+    last_input_tokens = 0
+
     def __init__(self, responses=None, memory=None, tools=None):
         self.memory = memory
         self.tools = tools or []
-        self.responses = responses or [Thought(text="Fake response", raw_content=[{"type": "text", "text": "Fake response"}])]
+        self.responses = responses or [
+            Thought(
+                text="Fake response",
+                raw_content=[{"type": "text", "text": "Fake response"}],
+            )
+        ]
         self.call_count = 0
 
     def think(self, conversation):
@@ -23,10 +40,14 @@ class FakeBrain:
             response = self.responses[self.call_count]
             self.call_count += 1
             return response
-        return Thought(text="No more responses", raw_content=[{"type": "text", "text": "No more responses"}])
+        return Thought(
+            text="No more responses",
+            raw_content=[{"type": "text", "text": "No more responses"}],
+        )
 
 
 # --- Tests from previous chapters ---
+
 
 def test_quit_command_raises_agent_stop():
     """Verify /q raises AgentStop exception."""
@@ -43,7 +64,7 @@ def test_empty_input_returns_empty_string():
 
 def test_read_file_adds_line_numbers():
     """Verify ReadFile prefixes each line with line numbers."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write("line one\nline two\n")
         temp_path = f.name
 
@@ -65,6 +86,7 @@ def test_mode_command_switches_to_act():
 
 
 # --- Tool filtering by mode ---
+
 
 def test_plan_mode_hides_write_file():
     """Verify plan mode does not expose write_file to the brain."""
@@ -104,6 +126,7 @@ def test_mode_switch_updates_brain_tools():
 
 # --- WritePlan tool ---
 
+
 def test_write_plan_saves_file():
     """Verify WritePlan writes to PLAN.md."""
     original_dir = os.getcwd()
@@ -124,6 +147,7 @@ def test_write_plan_saves_file():
 
 # --- WriteFile tool (no mode checks, always works) ---
 
+
 def test_write_file_writes_file():
     """Verify WriteFile writes content to the given path."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -139,14 +163,15 @@ def test_write_file_writes_file():
 
 # --- New tests for Chapter 8: Awareness tools ---
 
+
 def test_list_files_returns_file_tree():
     """Verify ListFiles returns a tree structure."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create some test files
         os.makedirs(os.path.join(tmpdir, "src"))
-        with open(os.path.join(tmpdir, "README.md"), 'w') as f:
+        with open(os.path.join(tmpdir, "README.md"), "w") as f:
             f.write("# Test")
-        with open(os.path.join(tmpdir, "src", "main.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "src", "main.py"), "w") as f:
             f.write("print('hello')")
 
         tool = ListFiles()
@@ -166,11 +191,11 @@ def test_list_files_skips_git_and_pycache():
         os.makedirs(os.path.join(tmpdir, "__pycache__"))
         os.makedirs(os.path.join(tmpdir, "src"))
 
-        with open(os.path.join(tmpdir, ".git", "config"), 'w') as f:
+        with open(os.path.join(tmpdir, ".git", "config"), "w") as f:
             f.write("git config")
-        with open(os.path.join(tmpdir, "__pycache__", "cache.pyc"), 'w') as f:
+        with open(os.path.join(tmpdir, "__pycache__", "cache.pyc"), "w") as f:
             f.write("cache")
-        with open(os.path.join(tmpdir, "src", "main.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "src", "main.py"), "w") as f:
             f.write("print('hello')")
 
         tool = ListFiles()
@@ -185,7 +210,7 @@ def test_list_files_skips_git_and_pycache():
 def test_search_codebase_finds_matches():
     """Verify SearchCodebase finds text in files."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "test.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "test.py"), "w") as f:
             f.write("def hello_world():\n    print('hello')\n")
 
         tool = SearchCodebase()
@@ -200,7 +225,7 @@ def test_search_codebase_finds_matches():
 def test_search_codebase_case_insensitive():
     """Verify SearchCodebase is case-insensitive."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "test.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "test.py"), "w") as f:
             f.write("def HelloWorld():\n    pass\n")
 
         tool = SearchCodebase()
@@ -212,7 +237,7 @@ def test_search_codebase_case_insensitive():
 def test_search_codebase_no_matches():
     """Verify SearchCodebase returns message when no matches found."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "test.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "test.py"), "w") as f:
             f.write("def foo():\n    pass\n")
 
         tool = SearchCodebase()
@@ -225,9 +250,9 @@ def test_search_codebase_skips_git():
     """Verify SearchCodebase skips .git directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         os.makedirs(os.path.join(tmpdir, ".git"))
-        with open(os.path.join(tmpdir, ".git", "config"), 'w') as f:
+        with open(os.path.join(tmpdir, ".git", "config"), "w") as f:
             f.write("unique_search_term")
-        with open(os.path.join(tmpdir, "main.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "main.py"), "w") as f:
             f.write("print('hello')")
 
         tool = SearchCodebase()
@@ -237,6 +262,7 @@ def test_search_codebase_skips_git():
 
 
 # --- Agent has new tools ---
+
 
 def test_agent_has_list_files_tool():
     """Verify agent has list_files tool."""
@@ -255,7 +281,7 @@ def test_agent_has_search_codebase_tool():
 def test_agent_execute_list_files():
     """Verify agent can execute list_files tool."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "test.txt"), 'w') as f:
+        with open(os.path.join(tmpdir, "test.txt"), "w") as f:
             f.write("hello")
 
         agent = Agent(brain=FakeBrain(), tools=tools)
@@ -267,11 +293,39 @@ def test_agent_execute_list_files():
 def test_agent_execute_search_codebase():
     """Verify agent can execute search_codebase tool."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        with open(os.path.join(tmpdir, "code.py"), 'w') as f:
+        with open(os.path.join(tmpdir, "code.py"), "w") as f:
             f.write("def my_function():\n    pass\n")
 
         agent = Agent(brain=FakeBrain(), tools=tools)
-        result = agent._execute_tool("search_codebase", {"query": "my_function", "path": tmpdir})
+        result = agent._execute_tool(
+            "search_codebase", {"query": "my_function", "path": tmpdir}
+        )
 
         assert "my_function" in result
         assert "code.py" in result
+
+
+# --- Context Compaction Tests (from book ch10) ---
+
+
+def test_compact_conversation_summarizes():
+    """Verify compaction replaces conversation with summary."""
+    summary = Thought(
+        text="Summary of conversation",
+        raw_content=[{"type": "text", "text": "Summary of conversation"}],
+    )
+    responses = [
+        Thought(
+            text="Response 1", raw_content=[{"type": "text", "text": "Response 1"}]
+        ),
+        summary,
+    ]
+    brain = FakeBrain(responses=responses)
+    brain.last_input_tokens = 200_000  # Over 75% threshold for claude sonnect
+    agent = Agent(brain=brain, tools=tools, mode="act")
+
+    agent.handle_input("Do something")
+
+    # After compaction, conversation should be short (summary + current response)
+    assert len(agent.conversation) <= 4
+    assert "Summary" in str(agent.conversation[0]["content"])

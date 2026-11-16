@@ -52,6 +52,9 @@ class RateLimited(RuntimeError):
 class Brain:
     """Base class for LLM providers"""
 
+    context_limit = 200_000
+    last_input_tokens = 0
+
     def think(self, conversation):
         """Process conversation, return Thought."""
         raise NotImplementedError
@@ -121,10 +124,13 @@ class ClaudeBrain(Brain):
 
         body = resp.json()
         self.last_usage = body.get("usage")
+        self.last_input_tokens = (self.last_usage or {}).get("input_tokens", 0)
         return self._parse_response(body["content"])
 
 
 class SarashinaBrain(Brain):
+    context_limit = 128_000
+
     def __init__(
         self,
         model="sarashina3.2-mini-thinking",
@@ -254,6 +260,7 @@ class SarashinaBrain(Brain):
 
         body = resp.json()
         self.last_usage = body.get("usage")
+        self.last_input_tokens = (self.last_usage or {}).get("prompt_tokens", 0)
         message = body["choices"][0]["message"]
         return self._parse_response(self._to_blocks(message))
 
