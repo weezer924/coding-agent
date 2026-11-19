@@ -15,7 +15,7 @@ def main():
     mode = "act" if "--act" in sys.argv else "plan"
     brain = ClaudeBrain(tools=tools)
     agent = Agent(brain, tools=tools, memory=memory, mode=mode)
-    print("Nanocode v0.3(Tool using)")
+    print("Nanocode v0.5(Tool/Memory/Plan)")
     print("Type /mode [plan|act] to switch plan")
     print("Type /q to quit.")
 
