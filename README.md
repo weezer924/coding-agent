@@ -36,11 +36,12 @@ Commands inside the Read-Eval-Print Loop: `/q` quits, `/switch` toggles between 
 `tests/test_main.py` It uses a `FakeBrain`, so no API key is needed. 
 `scripts/probe_anthropic.py` and `scripts/probe_sarashina.py` are manual probes that hit the real APIs; 
 
-## Test result 
+## Test result
 
-Prompts: "read tools.py and write a new file hello.text with "hello from sarashina"
+### ch05: read + write (Sarashina)
 
-Result:
+Prompt: `read tools.py and write a new file hello.text with "hello from sarashina"`
+
 ```sh
 > read tools.py and write a new file hello.text with "hello from sarashina"
 8 ['read_file']
@@ -50,9 +51,50 @@ Result:
 The file **`hello.text`** has been created with the content:
 
 "hello from sarashina"
-
-Let me know if you’d like to read it back, modify it, or work with any other files!
 ```
+
+### ch07 + ch09: plan mode, then act mode with run_command (Claude)
+
+Setup: a scratch folder with a broken `calc.py` (`add` subtracts, `average([])` divides by zero) and a `test_calc.py` that expects the right behaviour. Run from inside that folder so `run_command` and the file tools see it:
+
+```sh
+cd /path/to/scratch-task
+source /path/to/mine/.venv/bin/activate
+PYTHONPATH=/path/to/mine python /path/to/mine/main.py
+```
+
+Plan mode (default). The model has no `write_file`, `edit_file` or `run_command` on its menu, so it reads, writes `PLAN.md`, and stops:
+
+```sh
+[claude:plan] > The tests in test_calc.py fail. Fix calc.py so that pytest -q passes.
+  → Writing PLAN
+
+I found two bugs in `calc.py` and saved a plan to fix them. I haven't changed any files yet, because I'm in read-only plan mode.
+
+- **`add`:** it returns `a - b`, so `test_add` fails. The fix is to return `a + b`.
+- **`average`:** an empty list raises `ZeroDivisionError`, but `test_average_empty` expects `0`.
+
+Switch to ACT mode (`/mode act`) and I'll make both edits and run `pytest -q` to confirm.
+```
+
+Act mode. Same prompt. The model runs the tests, reads the failure, edits, re-runs, and only then reports. One turn, three tool calls, no human in the middle:
+
+```sh
+[claude:plan] > /mode act
+Switched to ACT MODE
+
+[claude:act] > The tests in test_calc.py fail. Fix calc.py so that pytest -q passes. Run the tests to confirm.
+  → Running: pytest -q 2>&1 | head -50
+  → Writing calc.py
+  → Running: pytest -q
+
+I fixed two bugs in `calc.py`, and `pytest -q` now passes (2 passed).
+
+- **`add`:** it returned `a - b`, so I changed it to `a + b`.
+- **`average`:** it raised `ZeroDivisionError` on an empty list. It now returns `0` for an empty list.
+```
+
+Note the first command: the model added `| head -50` on its own, because the `run_command` description says output is truncated at 5000 characters.
 
 ## Develop log
 

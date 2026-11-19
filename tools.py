@@ -196,7 +196,7 @@ class RunCommand:
     }
 
     def execute(self, context, command):
-        print(f"  → Runing: {command[:50]}")
+        print(f"  → Running: {command[:50]}")
         try:
             result = subprocess.run(
                 command, shell=True, capture_output=True, text=True, timeout=30
