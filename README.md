@@ -4,9 +4,9 @@ My own build of a minimal coding agent, Here is the introduce for each files:
 
 | File | Owns | Knows nothing about |
 |---|---|---|
-| `agent.py` | the conversation list and the loop | HTTP, file I/O |
-| `brain.py` | one class per LLM provider, normalised to a `Thought` | history, tools' internals |
-| `tools.py` | agent use read/write/edit/search/memory/context/list, the JSON Schema the model sees | the model, the loop |
+| `agent.py` | the conversation list and the loop; plan/act mode (filters the tool menu by `plan_safe`); compaction when `last_input_tokens` nears `context_limit` | HTTP, file I/O |
+| `brain.py` | one class per LLM provider, normalised to a `Thought`; reports `last_input_tokens` and its `context_limit` | history, tools' internals, mode |
+| `tools.py` | read/write/edit/list/search/run_command/save_memory/write_plan, the JSON Schema the model sees, and each tool's `plan_safe` flag | the model, the loop |
 | `memory.py` | `Memory`: one markdown file read at startup, injected as system prompt, overwritten by `save_memory`; `ToolContext`: the bag handed to every tool | the model, the loop, HTTP |
 | `main.py` | the Read-Eval-Print Loop(REPL) and wiring | everything else |
 
