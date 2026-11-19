@@ -28,8 +28,18 @@ class Agent:
         parts = [self.memory.content] if self.memory else []
         if self.mode == "plan":
             parts.append(
-                "You are in PLAN mode. You cannot write code files. "
-                "Use write_plan to save your plans to PLAN.md."
+                "You are in PLAN mode (read-only). "
+                "Available tools: read_file, list_files, search_codebase, write_plan. "
+                "You cannot write or edit files, run commands, or save memory. "
+                "Use write_plan to save your plan to PLAN.md. "
+                "The user switches to ACT mode (/mode act) to approve execution."
+            )
+        else:
+            parts.append(
+                "You are in ACT mode. All tools are available: read_file, list_files, "
+                "search_codebase, write_file, edit_file, run_command, save_memory, write_plan. "
+                "Read relevant code before changing it, prefer edit_file for small changes, "
+                "and run tests after making changes."
             )
         return "\n".join(parts)
 
