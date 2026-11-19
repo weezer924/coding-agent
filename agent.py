@@ -49,7 +49,7 @@ class Agent:
         if self.mode == "plan":
             result = []
             for t in self.tools:
-                if t.name != "write_file":
+                if t.plan_safe is True:
                     result.append(t)
             return tool_definitions(result)
         else:
@@ -118,7 +118,10 @@ class Agent:
                 return f"Error: {e}"
 
             if self.brain.last_input_tokens > self.brain.context_limit * 0.75:
-                self._compact_conversation()
+                try:
+                    self._compact_conversation()
+                except Exception as e:
+                    print(f"(Compaction failed: {e})")
 
             self.conversation.append(
                 {"role": "assistant", "content": thought.raw_content}

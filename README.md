@@ -66,8 +66,8 @@ Let me know if you’d like to read it back, modify it, or work with any other f
 | 06 | done | `Memory` file, `ToolContext`, `SaveMemory` tool; memory goes into the system prompt | Memory is not inside the model: a file is read at startup and injected as the system prompt every call, and the model gets one tool to overwrite that file. Cross-session recall works only because the text is re-fed each time. `ToolContext` is a bag passed as the first argument to every tool so internal objects (memory) travel separately from the model's args |
 | 07 | done | Plan mode: a read-only mode that blocks `write_file` until the user approves | Safety by menu, not by prompt: in plan mode the agent removes `write_file` from the tool list sent to the model and adds a `write_plan` tool, so the model physically cannot write code; `/mode act` restores the full menu. |
 | 08 | done | Codebase context: `ListFiles`, `SearchCodebase`; context-window tracking via `usage.input_tokens` against a per-model limit, compaction when near the limit | `list_files` and `search_codebase` let the model find files itself; `last_input_tokens` from the API usage block is checked against `context_limit` and at 75% the history is summarized into one user message |
-| 09 | next | `RunCommand` tool: run tests, feed stdout/stderr back into the loop | |
-| 10 | | Eval: task set from a scratch repo with hidden tests, run the agent per task, record pass/fail, iterations, tokens | |
+| 09 | done | `RunCommand` tool: run tests, feed stdout/stderr back into the loop | `run_command` returns STDOUT, STDERR and exit code (30s timeout, 5000-char truncation) so the model can run `pytest`, read the failure and fix it in one turn; `edit_file` replaces one exact match instead of rewriting the whole file; plan mode hides tools by a `plan_safe` flag; a failed compaction is caught and the turn continues. Live check: broken `calc.py` fixed and verified in 3 tool calls. |
+| 10 | next | Eval: task set from a scratch repo with hidden tests, run the agent per task, record pass/fail, iterations, tokens | |
 
 ## License
 
